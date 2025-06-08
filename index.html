@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NYC Free Concerts Today</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 10px;
+        }
+
+        .date {
+            font-size: 1.1rem;
+            color: #888888;
+            font-weight: 400;
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 1.1rem;
+            color: #888888;
+            margin: 60px 0;
+        }
+
+        .error {
+            text-align: center;
+            font-size: 1.1rem;
+            color: #ff6b6b;
+            margin: 60px 0;
+        }
+
+        .no-events {
+            text-align: center;
+            font-size: 1.2rem;
+            color: #888888;
+            margin: 60px 0;
+            padding: 40px;
+            border: 1px solid #333333;
+            border-radius: 8px;
+        }
+
+        .events-container {
+            display: grid;
+            gap: 20px;
+        }
+
+        .event-card {
+            background-color: #111111;
+            border: 1px solid #333333;
+            border-radius: 12px;
+            padding: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .event-card:hover {
+            border-color: #555555;
+            transform: translateY(-2px);
+        }
+
+        .event-name {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #ffffff;
+        }
+
+        .event-details {
+            display: grid;
+            gap: 8px;
+        }
+
+        .event-detail {
+            display: flex;
+            align-items: center;
+            font-size: 0.95rem;
+        }
+
+        .detail-label {
+            color: #888888;
+            font-weight: 500;
+            min-width: 80px;
+            margin-right: 12px;
+        }
+
+        .detail-value {
+            color: #ffffff;
+        }
+
+        .venue-series {
+            display: inline-block;
+            background-color: #222222;
+            color: #ffffff;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-top: 16px;
+            border: 1px solid #444444;
+        }
+
+        .refresh-button {
+            display: block;
+            margin: 40px auto 20px;
+            background-color: #ffffff;
+            color: #000000;
+            border: none;
+            border-radius: 50px;
+            padding: 12px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .refresh-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 15px;
+            }
+
+            .title {
+                font-size: 1.8rem;
+            }
+
+            .event-card {
+                padding: 20px;
+            }
+
+            .event-name {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">free concerts in nyc today</h1>
+            <p class="date" id="currentDate"></p>
+        </div>
+
+        <div id="loadingMessage" class="loading">
+            Loading today's events...
+        </div>
+
+        <div id="errorMessage" class="error" style="display: none;">
+            Error loading events. Please make sure nyc_events.csv is available.
+        </div>
+
+        <div id="noEventsMessage" class="no-events" style="display: none;">
+            No free concerts scheduled for today.<br>
+            <small>Check back tomorrow or run the scraper to update the data!</small>
+        </div>
+
+        <div id="eventsContainer" class="events-container" style="display: none;">
+        </div>
+
+        <button class="refresh-button" onclick="loadEvents()">refresh</button>
+    </div>
+
+    <script>
+        // Set current date
+        function setCurrentDate() {
+            const today = new Date();
+            const options = { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            };
+            document.getElementById('currentDate').textContent = today.toLocaleDateString('en-US', options);
+        }
+
+        // Parse CSV data
+        function parseCSV(text) {
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            const data = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const values = [];
+                let currentValue = '';
+                let insideQuotes = false;
+
+                for (let j = 0; j < lines[i].length; j++) {
+                    const char = lines[i][j];
+                    
+                    if (char === '"') {
+                        insideQuotes = !insideQuotes;
+                    } else if (char === ',' && !insideQuotes) {
+                        values.push(currentValue.trim());
+                        currentValue = '';
+                    } else {
+                        currentValue += char;
+                    }
+                }
+                values.push(currentValue.trim());
+
+                if (values.length === headers.length) {
+                    const row = {};
+                    headers.forEach((header, index) => {
+                        row[header] = values[index];
+                    });
+                    data.push(row);
+                }
+            }
+
+            return data;
+        }
+
+        // Get today's date in YYYY-MM-DD format (local timezone)
+        function getTodayString() {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // Display events
+        function displayEvents(events) {
+            const container = document.getElementById('eventsContainer');
+            const loadingMessage = document.getElementById('loadingMessage');
+            const errorMessage = document.getElementById('errorMessage');
+            const noEventsMessage = document.getElementById('noEventsMessage');
+
+            loadingMessage.style.display = 'none';
+            errorMessage.style.display = 'none';
+
+            if (events.length === 0) {
+                noEventsMessage.style.display = 'block';
+                container.style.display = 'none';
+                return;
+            }
+
+            noEventsMessage.style.display = 'none';
+            container.style.display = 'grid';
+            container.innerHTML = '';
+
+            events.forEach(event => {
+                const eventCard = document.createElement('div');
+                eventCard.className = 'event-card';
+
+                // Build event details only for available information
+                let eventDetailsHTML = '';
+                
+                if (event.time && event.time !== 'Time TBA') {
+                    eventDetailsHTML += `
+                        <div class="event-detail">
+                            <span class="detail-label">Time:</span>
+                            <span class="detail-value">${event.time}</span>
+                        </div>`;
+                }
+                
+                if (event.location && event.location !== 'Location TBA' && event.location !== 'Time TBA') {
+                    eventDetailsHTML += `
+                        <div class="event-detail">
+                            <span class="detail-label">Location:</span>
+                            <span class="detail-value">${event.location}</span>
+                        </div>`;
+                }
+
+                const venueSeriesHTML = (event.venue_series && event.venue_series !== 'Venue TBA') 
+                    ? `<div class="venue-series">${event.venue_series}</div>` 
+                    : '';
+
+                eventCard.innerHTML = `
+                    <div class="event-name">${event.event_name || 'Event Name TBA'}</div>
+                    ${eventDetailsHTML ? `<div class="event-details">${eventDetailsHTML}</div>` : ''}
+                    ${venueSeriesHTML}
+                `;
+
+                container.appendChild(eventCard);
+            });
+        }
+
+        // Load events from CSV
+        async function loadEvents() {
+            const loadingMessage = document.getElementById('loadingMessage');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            loadingMessage.style.display = 'block';
+            errorMessage.style.display = 'none';
+
+            try {
+                const response = await fetch('nyc_events.csv');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch CSV file');
+                }
+
+                const csvText = await response.text();
+                const allEvents = parseCSV(csvText);
+                const todayString = getTodayString();
+
+                // Filter events for today
+                console.log('All events:', allEvents);
+                console.log('Today string:', todayString);
+                
+                const todaysEvents = allEvents.filter(event => {
+                    const eventDate = event.date ? event.date.split(' ')[0] : '';
+                    console.log('Event date:', eventDate, 'matches today:', eventDate === todayString);
+                    return eventDate === todayString;
+                });
+
+                console.log('Today\'s events:', todaysEvents);
+                displayEvents(todaysEvents);
+
+            } catch (error) {
+                console.error('Error loading events:', error);
+                loadingMessage.style.display = 'none';
+                errorMessage.style.display = 'block';
+                document.getElementById('eventsContainer').style.display = 'none';
+                document.getElementById('noEventsMessage').style.display = 'none';
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            setCurrentDate();
+            loadEvents();
+        });
+    </script>
+</body>
+</html>
